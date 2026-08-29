@@ -180,6 +180,30 @@ function controlerMentions(facture) {
     }
   });
 
+  // Le QR de verification ne survit pas a une conversion du PDF en texte :
+  // on ne le reclame que la ou il devrait se trouver.
+  if (facture.meta.format === 'pdf') {
+    const verification = facture.verification || {};
+    const present = Boolean(verification.sticker || verification.url);
+    resultats.push(controle('mention-sticker', present ? 'ok' : 'attention',
+      present ? 'Sticker électronique : QR de vérification présent'
+        : 'QR de vérification absent du PDF : le sticker électronique ne peut pas être relu'));
+  }
+
+  // Ce que la DGI a repondu, quand la verification est branchee.
+  const VERDICTS = {
+    verifiee: ['ok', 'Sticker vérifié auprès de la DGI'],
+    discordante: ['erreur', 'La DGI ne dit pas la même chose que la facture'],
+    inconnue: ['erreur', 'Sticker inconnu du registre de la DGI'],
+    indisponible: ['attention', 'Vérification auprès de la DGI indisponible']
+  };
+  const verdict = VERDICTS[(facture.verification || {}).etat];
+  if (verdict) {
+    const [niveau, libelle] = verdict;
+    resultats.push(controle('verification-dgi', niveau, libelle,
+      facture.verification.details ? { note: facture.verification.details } : {}));
+  }
+
   if (facture.document.type === 'avoir' && !facture.document.numeroFactureInitiale) {
     resultats.push(controle('avoir-facture-initiale', 'erreur', "Facture d'avoir sans référence à la facture initiale"));
   }

@@ -311,12 +311,46 @@ function nettoyerRccm(valeur) {
   return nonVide(String(valeur == null ? '' : valeur).replace(/\s+du\s*$/i, ''));
 }
 
-function chercherVerification(lignes) {
+// L'adresse de verification de la DGI et le jeton qu'elle porte. Sur une
+// facture normalisee, ils ne sont ecrits nulle part en clair : seul le QR les
+// donne. Le dernier segment de l'adresse est le jeton du sticker electronique.
+// Un jeton porte des chiffres : sans cela, « verification » ou « facture »,
+// simples mots du chemin, passeraient pour des stickers.
+const RE_JETON = /^(?=.*\d)[A-Za-z0-9][A-Za-z0-9._-]{7,}$/;
+
+function lireCodeVerification(charge) {
+  const texte = normaliserEspaces(charge);
+  if (!texte) return null;
+  if (!/^https?:\/\//i.test(texte)) return { url: null, sticker: texte };
+  const url = texte.replace(/[).,;]+$/, '');
+  let sticker = null;
+  try {
+    const segments = new URL(url).pathname.split('/').filter(Boolean);
+    const dernier = segments[segments.length - 1];
+    if (dernier && RE_JETON.test(dernier)) sticker = dernier;
+  } catch (erreur) {
+    return { url, sticker: null };
+  }
+  return { url, sticker };
+}
+
+function chercherVerification(lignes, codes) {
   const verification = { codeVerification: null, sticker: null, url: null };
-  for (const ligne of lignes) {
-    if (!verification.url) {
+  // Le QR fait foi : c'est la piece que la DGI a apposee.
+  for (const charge of codes || []) {
+    const lu = lireCodeVerification(charge);
+    if (!lu) continue;
+    if (lu.url && !verification.url) verification.url = lu.url;
+    if (lu.sticker && !verification.sticker) verification.sticker = lu.sticker;
+    if (!lu.url && !verification.codeVerification) verification.codeVerification = lu.sticker;
+  }
+  if (!verification.url) {
+    for (const ligne of lignes) {
       const url = ligne.match(/https?:\/\/\S+/i);
-      if (url) verification.url = url[0].replace(/[).,;]+$/, '');
+      if (url) {
+        verification.url = url[0].replace(/[).,;]+$/, '');
+        break;
+      }
     }
   }
   return verification;
@@ -407,11 +441,17 @@ function analyser(texte, options = {}) {
       netAPayer: totauxLus.netAPayer ?? null
     },
     taxes: resume,
-    verification: {
-      codeVerification: nonVide(documentEntete.codeVerification),
-      sticker: nonVide(documentEntete.sticker),
-      url: nonVide(documentEntete.urlVerification) || chercherVerification(lignes).url
-    },
+    verification: (() => {
+      const lu = chercherVerification(lignes, options.codes);
+      return {
+        codeVerification: nonVide(documentEntete.codeVerification) || lu.codeVerification,
+        sticker: nonVide(documentEntete.sticker) || lu.sticker,
+        url: nonVide(documentEntete.urlVerification) || lu.url,
+        // Ce que la DGI a repondu, quand la verification est branchee.
+        etat: null,
+        verifieLe: null
+      };
+    })(),
     pied: zones.pied.filter((ligne) => !estLigneTableau(ligne)),
     nonLues: lignes.filter((ligne, rang) =>
       !consommees.has(rang) && !estLigneTableau(ligne) && !estEnteteClient(ligne) && !estEnteteResume(ligne))
@@ -420,4 +460,4 @@ function analyser(texte, options = {}) {
   return facture;
 }
 
-module.exports = { analyser, decouper, lireDetail, lireTaxes, lireResume, cleTotal, cellulesLigne };
+module.exports = { analyser, decouper, lireDetail, lireCodeVerification, lireTaxes, lireResume, cleTotal, cellulesLigne };

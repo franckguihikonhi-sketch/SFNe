@@ -10,6 +10,15 @@ const { formaterMontant, formaterTaux, libelleDevise, normaliserEspaces } = requ
 
 const SIGNES = { ok: '✅', attention: '⚠️', erreur: '❌' };
 
+// L'etat rendu par la verification aupres de la DGI, en clair.
+const ETATS = {
+  verifiee: '✅ vérifié auprès de la DGI',
+  discordante: '❌ la DGI ne dit pas la même chose',
+  inconnue: '❌ inconnu du registre de la DGI',
+  indisponible: '⚠️ service de la DGI indisponible',
+  sans_sticker: '— aucun sticker à vérifier'
+};
+
 function echapperCellule(valeur) {
   if (valeur == null || valeur === '') return '—';
   return String(valeur).replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim() || '—';
@@ -72,6 +81,7 @@ function enTeteYaml(facture, verdict) {
     ['client', client.nom],
     ['client_ncc', client.ncc],
     ['client_regime', client.regimeImposition],
+    ['sticker', facture.verification ? facture.verification.sticker : null],
     ['total_ht', totaux.totalHT],
     ['total_tva', totaux.totalTVA],
     ['autres_taxes', totaux.autresTaxes],
@@ -230,12 +240,15 @@ function versMarkdown(facture, verdict, options = {}) {
   morceaux.push(sectionTaxes(facture, verdict));
 
   const verification = facture.verification || {};
-  if (verification.codeVerification || verification.sticker || verification.url) {
+  if (verification.codeVerification || verification.sticker || verification.url || ETATS[verification.etat]) {
     morceaux.push('## Vérification');
     morceaux.push(tableauChamps([
       ['Code de vérification', verification.codeVerification],
       ['Sticker électronique', verification.sticker],
-      ['Lien de vérification', verification.url]
+      ['Lien de vérification', verification.url],
+      ['Vérifié auprès de la DGI', ETATS[verification.etat] || null],
+      ['Vérifié le', verification.etat && ETATS[verification.etat] ? verification.verifieLe : null],
+      ['Ce que dit la DGI', verification.details]
     ]));
   }
 

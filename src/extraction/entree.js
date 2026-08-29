@@ -3,7 +3,7 @@
 // Reconnaissance du fichier depose : PDF, Markdown ou texte.
 
 const path = require('node:path');
-const { texteDuPdf, estPdf } = require('./pdf');
+const { lirePdf, estPdf } = require('./pdf');
 
 const FORMATS = {
   '.pdf': 'pdf',
@@ -30,7 +30,7 @@ function formatDe(nomFichier, donnees) {
   return 'texte';
 }
 
-// Rend { texte, format }. Un PDF sans couche de texte (une simple image
+// Rend { texte, format, codes }. Un PDF sans couche de texte (une simple image
 // scannee) ne donne rien : on le dit plutot que de rendre un fichier vide.
 async function extraireTexte(donnees, nomFichier) {
   const tampon = Buffer.isBuffer(donnees) ? donnees : Buffer.from(donnees);
@@ -40,20 +40,20 @@ async function extraireTexte(donnees, nomFichier) {
   }
   const format = formatDe(nomFichier, tampon);
   if (format === 'pdf') {
-    let texte;
+    let lu;
     try {
-      texte = await texteDuPdf(tampon);
+      lu = await lirePdf(tampon);
     } catch (erreur) {
       throw new EntreeInvalide(`PDF illisible : ${erreur.message}`);
     }
-    if (!texte || !texte.trim()) {
+    if (!lu.texte || !lu.texte.trim()) {
       throw new EntreeInvalide('Ce PDF ne porte aucun texte : il est probablement scanne. Fournissez le PDF d\'origine.');
     }
-    return { texte, format };
+    return { texte: lu.texte, format, codes: lu.codes };
   }
   const texte = tampon.toString('utf8');
   if (!texte.trim()) throw new EntreeInvalide('Fichier sans contenu lisible.');
-  return { texte, format };
+  return { texte, format, codes: [] };
 }
 
 module.exports = { extraireTexte, formatDe, EntreeInvalide, TAILLE_MAXI };
