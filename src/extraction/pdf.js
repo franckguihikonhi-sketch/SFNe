@@ -7,6 +7,8 @@
 // lecture, et on marque les sauts de colonne par deux espaces. L'analyse s'en
 // sert pour retrouver les colonnes d'un tableau qui n'a plus de bordures.
 
+const { codesDeLaPage } = require('./qr');
+
 const ECART_LIGNE = 2.5;   // points : deux fragments plus proches sont sur la meme ligne
 const ECART_COLONNE = 6;   // points : au-dela, c'est une autre colonne
 
@@ -42,7 +44,8 @@ function regrouperEnLignes(elements) {
   });
 }
 
-async function texteDuPdf(donnees) {
+// Rend { texte, codes } : le texte page a page, et les charges utiles des QR.
+async function lirePdf(donnees) {
   const pdfjs = await chargerPdfJs();
   const tache = pdfjs.getDocument({
     data: new Uint8Array(donnees),
@@ -53,10 +56,14 @@ async function texteDuPdf(donnees) {
   });
   const document = await tache.promise;
   const pages = [];
+  const codes = [];
   try {
     for (let numero = 1; numero <= document.numPages; numero += 1) {
       const page = await document.getPage(numero);
       const contenu = await page.getTextContent();
+      for (const charge of await codesDeLaPage(pdfjs, page)) {
+        if (!codes.includes(charge)) codes.push(charge);
+      }
       const elements = contenu.items
         .filter((item) => typeof item.str === 'string' && item.str.trim() !== '')
         .map((item) => ({
@@ -71,7 +78,11 @@ async function texteDuPdf(donnees) {
   } finally {
     await tache.destroy();
   }
-  return pages.join('\n\n');
+  return { texte: pages.join('\n\n'), codes };
+}
+
+async function texteDuPdf(donnees) {
+  return (await lirePdf(donnees)).texte;
 }
 
 function estPdf(donnees) {
@@ -79,4 +90,4 @@ function estPdf(donnees) {
   return tampon.subarray(0, 5).toString('latin1') === '%PDF-';
 }
 
-module.exports = { texteDuPdf, estPdf, regrouperEnLignes };
+module.exports = { lirePdf, texteDuPdf, estPdf, regrouperEnLignes };

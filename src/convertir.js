@@ -28,10 +28,11 @@ function ressembleAUneFacture(facture) {
 
 async function convertir(donnees, options = {}) {
   const nom = options.nom || null;
-  const { texte, format } = await extraireTexte(donnees, nom);
+  const { texte, format, codes } = await extraireTexte(donnees, nom);
   const facture = analyser(texte, {
     source: nom,
     format,
+    codes,
     extraitLe: options.extraitLe || new Date().toISOString()
   });
   if (!ressembleAUneFacture(facture)) {

@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { pdfDepuisLignes, pdfDepuisBlocs } = require('./aides/pdf-minimal');
+const { pdfDepuisLignes, pdfDepuisBlocs, imageQr } = require('./aides/pdf-minimal');
 const { estPdf, regrouperEnLignes } = require('../src/extraction/pdf');
 const { extraireTexte } = require('../src/extraction/entree');
 const { convertir } = require('../src/convertir');
@@ -166,4 +166,64 @@ test("l'entete du tableau n'est pas prise pour une ligne de totaux", async () =>
   assert.deepEqual(facture.taxes, [
     { libelle: 'TVA normal - TVA sur HT 18,00% - A', base: 21546, taux: 18, montant: 3878 }
   ]);
+});
+
+const JETON = '0199aaaa-bbbb-7000-8000-ccccdddd0001';
+const ADRESSE_DGI = `https://exemple.test/fr/verification/${JETON}`;
+
+function factureAvecQr(charge) {
+  const blocs = [
+    { texte: 'Facture de vente Nº 1234567U26000000889', x: 40, y: 790 },
+    { texte: 'Etablissement : SOCIETE DEMO NEGOCE', x: 40, y: 770 },
+    { texte: 'Client', x: 40, y: 750 },
+    { texte: 'Nom : CLIENT DEMO CI', x: 40, y: 730 },
+    { texte: 'Réf  Désignation  P.U HT  Qté  Unité  Taxes (%)  Rem. (%)  Montant HT', x: 40, y: 700, taille: 8 }
+  ];
+  const colonnes = [40, 95, 265, 320, 360, 400, 460, 505];
+  ['A1', 'RIZ', '1 000', '2', 'SAC', 'TVA (18)', '0', '2 000']
+    .forEach((texte, rang) => blocs.push({ texte, x: colonnes[rang], y: 686, taille: 8 }));
+  blocs.push({ texte: 'TOTAL A PAYER', x: 380, y: 660, taille: 8 });
+  blocs.push({ texte: '2 360', x: 505, y: 660, taille: 8 });
+  const images = charge ? [{ ...imageQr(charge), x: 430, y: 740, cote: 110 }] : [];
+  return pdfDepuisBlocs(blocs, { images });
+}
+
+test('le QR du PDF donne le sticker et le lien de verification de la DGI', async () => {
+  // Ni l'un ni l'autre ne figurent dans le texte de la facture : sans le QR,
+  // ils sont perdus.
+  const { facture } = await convertir(factureAvecQr(ADRESSE_DGI), { nom: 'facture.pdf' });
+  assert.equal(facture.verification.url, ADRESSE_DGI);
+  assert.equal(facture.verification.sticker, JETON);
+  assert.equal(facture.verification.etat, null);
+});
+
+test('le sticker figure dans l\'entete YAML et dans le document', async () => {
+  const { markdown } = await convertir(factureAvecQr(ADRESSE_DGI), { nom: 'facture.pdf' });
+  assert.match(markdown, new RegExp(`^sticker: ${JETON}$`, 'm'));
+  assert.match(markdown, /## Vérification/);
+  assert.match(markdown, new RegExp(`\\| Lien de vérification \\| ${ADRESSE_DGI.replace(/\//g, '\\/')} \\|`));
+});
+
+test('un QR present passe le controle, son absence est une reserve', async () => {
+  const avec = await convertir(factureAvecQr(ADRESSE_DGI), { nom: 'avec-qr.pdf' });
+  const sans = await convertir(factureAvecQr(null), { nom: 'sans-qr.pdf' });
+  assert.equal(avec.verdict.controles.find((c) => c.code === 'mention-sticker').niveau, 'ok');
+  assert.equal(sans.verdict.controles.find((c) => c.code === 'mention-sticker').niveau, 'attention');
+});
+
+test('un Markdown ne se voit pas reprocher un QR qu\'il ne peut pas porter', async () => {
+  // Le QR ne survit pas a la conversion du PDF en texte : le reclamer la
+  // n'aurait aucun sens.
+  const markdown = await convertir(Buffer.from([
+    'Facture de vente Nº 1234567U26000000889',
+    '| Réf | Désignation | P.U HT | Qté | Unité | Taxes (%) | Rem. (%) | Montant HT |',
+    '| A1 | RIZ | 1 000 | 2 | SAC | TVA (18) | 0 | 2 000 |'
+  ].join('\n')), { nom: 'facture.md' });
+  assert.equal(markdown.verdict.controles.find((c) => c.code === 'mention-sticker'), undefined);
+});
+
+test('un QR qui ne porte pas d\'adresse est garde tel quel', async () => {
+  const { facture } = await convertir(factureAvecQr('FNE-2026-000889-CI'), { nom: 'facture.pdf' });
+  assert.equal(facture.verification.codeVerification, 'FNE-2026-000889-CI');
+  assert.equal(facture.verification.url, null);
 });

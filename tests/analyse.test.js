@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { analyser } = require('../src/metier/analyse');
+const { analyser, lireCodeVerification } = require('../src/metier/analyse');
 
 const EXEMPLE = fs.readFileSync(path.join(__dirname, '..', 'exemples', 'facture-avoir.md'), 'utf8');
 
@@ -103,4 +103,14 @@ test('le resume des taxes se lit en tableau comme en colonnes espacees', () => {
 test('les lignes que rien ne reconnait sont signalees, jamais perdues', () => {
   const facture = analyser('Facture de vente Nº 123456789\nUne mention libre de l\'editeur');
   assert.ok(facture.nonLues.includes("Une mention libre de l'editeur"));
+});
+
+test('le jeton se lit dans le dernier segment de l\'adresse de verification', () => {
+  assert.deepEqual(lireCodeVerification('https://www.services.fne.dgi.gouv.ci/fr/verification/019ff01b-b312-7006-a00d-c122f4a3a4c2'),
+    { url: 'https://www.services.fne.dgi.gouv.ci/fr/verification/019ff01b-b312-7006-a00d-c122f4a3a4c2',
+      sticker: '019ff01b-b312-7006-a00d-c122f4a3a4c2' });
+  assert.deepEqual(lireCodeVerification('FNE-2026-000889'), { url: null, sticker: 'FNE-2026-000889' });
+  assert.deepEqual(lireCodeVerification('https://exemple.test/verification'),
+    { url: 'https://exemple.test/verification', sticker: null });
+  assert.equal(lireCodeVerification('  '), null);
 });

@@ -18,9 +18,32 @@ Les montants sont en francs CFA, entiers : la monnaie n'a pas de subdivision.
 
 Trois choses sont tirees de chaque facture : **ce qu'elle dit** (emetteur,
 client, lignes, taxes, totaux), **ce qui la rend opposable** (numero FNE,
-facture initiale d'un avoir, NCC, RCCM, regime d'imposition, mode de paiement),
-et **ce qui ne colle pas** (un total qui ne suit pas ses lignes, une mention
-obligatoire absente).
+facture initiale d'un avoir, NCC, RCCM, regime d'imposition, mode de paiement,
+sticker electronique), et **ce qui ne colle pas** (un total qui ne suit pas ses
+lignes, une mention obligatoire absente).
+
+## Le sticker electronique
+
+Sur une facture normalisee, l'adresse de verification de la DGI et le jeton du
+sticker ne sont ecrits nulle part en clair : **seul le QR les porte**. Le
+service lit donc les QR du PDF, en tire le lien et le jeton, les fait figurer
+dans l'entete YAML (`sticker`) et dans le document, et signale un PDF qui n'en
+porte pas.
+
+```
+sticker: 019ff01b-b312-7006-a00d-c122f4a3a4c2
+```
+
+Le QR ne survit pas a une conversion du PDF en texte : une facture recue en
+Markdown n'a plus de sticker, et le service ne le lui reproche pas.
+
+**La verification aupres de la DGI n'est pas branchee**, et ce n'est pas un
+oubli. La page publique de verification est une application qui rend son verdict
+apres coup : un jeton invente y renvoie exactement la meme reponse qu'un jeton
+valide (meme code HTTP, meme page a l'octet pres). Verifier par cette adresse
+donnerait un controle qui dit toujours « conforme », y compris sur une facture
+fabriquee — pire que pas de verification. Un vrai controle demande l'API FNE de
+la DGI, avec les identifiants de l'entreprise.
 
 ## Demarrer
 
@@ -207,7 +230,7 @@ plutot que dans le code qui les cherche.
 ## Verifier
 
 ```sh
-npm test       # 68 tests : texte, analyse, controles, rendu, PDF, depot, API, lots, CLI
+npm test       # 74 tests : texte, analyse, controles, rendu, PDF, depot, API, lots, CLI
 npm run verifier # demarre le service, depose une facture puis un lot, relit les Markdown
 ```
 
@@ -221,6 +244,7 @@ Les deux tournent a chaque poussee et sur chaque demande de fusion
   l'historique.
 - **Un PDF scanne** (une image, sans couche de texte) est refuse avec une raison
   claire. Il faudrait une reconnaissance optique, qui n'est pas ici.
-- **Aucun appel a la DGI.** Le service lit ce que la facture porte ; il ne va pas
-  verifier le sticker electronique aupres de l'administration.
+- **Aucun appel a la DGI.** Le service lit le sticker que la facture porte,
+  mais ne le confronte pas encore au registre de l'administration : voir
+  « Le sticker electronique ».
 - **Pas de comptabilite.** Il produit un fichier, pas une ecriture.

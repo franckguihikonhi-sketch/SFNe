@@ -180,6 +180,16 @@ function controlerMentions(facture) {
     }
   });
 
+  // Le QR de verification ne survit pas a une conversion du PDF en texte :
+  // on ne le reclame que la ou il devrait se trouver.
+  if (facture.meta.format === 'pdf') {
+    const verification = facture.verification || {};
+    const present = Boolean(verification.sticker || verification.url);
+    resultats.push(controle('mention-sticker', present ? 'ok' : 'attention',
+      present ? 'Sticker électronique : QR de vérification présent'
+        : 'QR de vérification absent du PDF : le sticker électronique ne peut pas être relu'));
+  }
+
   if (facture.document.type === 'avoir' && !facture.document.numeroFactureInitiale) {
     resultats.push(controle('avoir-facture-initiale', 'erreur', "Facture d'avoir sans référence à la facture initiale"));
   }

@@ -18,6 +18,10 @@
     "verifier": "node scripts/verifier-service.js"
   },
   "dependencies": {
+    "jsqr": "^1.4.0",
     "pdfjs-dist": "^6.2.108"
+  },
+  "devDependencies": {
+    "qrcode-generator": "^2.0.4"
   }
 }

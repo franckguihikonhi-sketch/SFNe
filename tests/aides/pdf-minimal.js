@@ -1,5 +1,8 @@
 'use strict';
 
+const zlib = require('node:zlib');
+const qrcode = require('qrcode-generator');
+
 // Fabrique un PDF minimal a partir de blocs de texte places en x/y.
 // Sert de piece a conviction aux tests : pas de binaire dans le depot, le
 // fichier est reconstruit a chaque execution.
@@ -8,21 +11,61 @@ function echapper(texte) {
   return String(texte).replace(/[\\()]/g, '\\$&');
 }
 
+// Une image RVB, un octet par composante, prete a devenir un XObject.
+// images : [{ rvb, largeur, hauteur, x, y, cote }]
+function imageQr(texte, { module: cote = 4, marge = 4 } = {}) {
+  const qr = qrcode(0, 'M');
+  qr.addData(texte);
+  qr.make();
+  const modules = qr.getModuleCount();
+  const cotes = (modules + marge * 2) * cote;
+  const rvb = Buffer.alloc(cotes * cotes * 3, 255);
+  for (let ligne = 0; ligne < modules; ligne += 1) {
+    for (let colonne = 0; colonne < modules; colonne += 1) {
+      if (!qr.isDark(ligne, colonne)) continue;
+      for (let y = 0; y < cote; y += 1) {
+        for (let x = 0; x < cote; x += 1) {
+          const px = (colonne + marge) * cote + x;
+          const py = (ligne + marge) * cote + y;
+          rvb.fill(0, (py * cotes + px) * 3, (py * cotes + px) * 3 + 3);
+        }
+      }
+    }
+  }
+  return { rvb, largeur: cotes, hauteur: cotes };
+}
+
 // blocs : [{ texte, x, y, taille }]
 function pdfDepuisBlocs(blocs, options = {}) {
   const largeur = options.largeur || 595;
   const hauteur = options.hauteur || 842;
-  const contenu = blocs
+  const images = options.images || [];
+
+  const dessins = images
+    .map((image, rang) => {
+      const cote = image.cote || 100;
+      return `q ${cote} 0 0 ${cote} ${image.x} ${image.y} cm /Im${rang} Do Q`;
+    })
+    .join('\n');
+  const textes = blocs
     .map((bloc) => `BT /F1 ${bloc.taille || 9} Tf 1 0 0 1 ${bloc.x} ${bloc.y} Tm (${echapper(bloc.texte)}) Tj ET`)
     .join('\n');
+  const contenu = [dessins, textes].filter(Boolean).join('\n');
 
+  const xobjets = images.map((image, rang) => `/Im${rang} ${6 + rang} 0 R`).join(' ');
   const objets = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
     `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${largeur} ${hauteur}] ` +
-      '/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>',
+      `/Resources << /Font << /F1 5 0 R >>${xobjets ? ` /XObject << ${xobjets} >>` : ''} >> /Contents 4 0 R >>`,
     `<< /Length ${Buffer.byteLength(contenu, 'latin1')} >>\nstream\n${contenu}\nendstream`,
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    ...images.map((image) => {
+      const comprime = zlib.deflateSync(image.rvb).toString('latin1');
+      return `<< /Type /XObject /Subtype /Image /Width ${image.largeur} /Height ${image.hauteur} ` +
+        `/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /FlateDecode /Length ${comprime.length} >>\n` +
+        `stream\n${comprime}\nendstream`;
+    })
   ];
 
   let pdf = '%PDF-1.4\n';
@@ -69,4 +112,4 @@ function pdfDepuisLignes(lignes, options = {}) {
   return pdfDepuisBlocs(blocs, options);
 }
 
-module.exports = { pdfDepuisBlocs, pdfDepuisLignes };
+module.exports = { pdfDepuisBlocs, pdfDepuisLignes, imageQr };

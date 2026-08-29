@@ -72,6 +72,7 @@ function enTeteYaml(facture, verdict) {
     ['client', client.nom],
     ['client_ncc', client.ncc],
     ['client_regime', client.regimeImposition],
+    ['sticker', facture.verification ? facture.verification.sticker : null],
     ['total_ht', totaux.totalHT],
     ['total_tva', totaux.totalTVA],
     ['autres_taxes', totaux.autresTaxes],
@@ -235,7 +236,8 @@ function versMarkdown(facture, verdict, options = {}) {
     morceaux.push(tableauChamps([
       ['Code de vérification', verification.codeVerification],
       ['Sticker électronique', verification.sticker],
-      ['Lien de vérification', verification.url]
+      ['Lien de vérification', verification.url],
+      ['Vérifié auprès de la DGI', verification.etat]
     ]));
   }
 
