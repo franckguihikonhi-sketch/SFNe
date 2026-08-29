@@ -73,6 +73,15 @@ test('une facture incoherente sort avec un code d\'erreur', async () => {
   assert.equal(resultat.code, 2);
 });
 
+test('un fichier qui n\'est pas une facture est refuse', async () => {
+  const dossier = dossierJetable();
+  const fichier = path.join(dossier, 'brouillon.txt');
+  fs.writeFileSync(fichier, 'Note de service : penser a commander des sacs.');
+  const resultat = await sansSortie(() => principal([fichier]));
+  assert.equal(resultat.code, 1);
+  assert.match(resultat.erreur, /pas une facture/);
+});
+
 test('sans argument, l\'aide s\'affiche', async () => {
   const resultat = await sansSortie(() => principal([]));
   assert.equal(resultat.code, 1);

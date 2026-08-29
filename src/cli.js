@@ -19,7 +19,10 @@ Options :
       --sans-provenance   N'ajoute pas la section de provenance.
   -h, --aide              Affiche cette aide.
 
-Sans --sortie, le Markdown est ecrit sur la sortie standard.`;
+Sans --sortie, le Markdown est ecrit sur la sortie standard.
+
+Code de sortie : 0 tout est lu et coherent, 2 une facture porte des anomalies,
+1 un fichier au moins n'a pas pu etre lu.`;
 
 function lireArguments(arguments_) {
   const options = { fichiers: [], sortie: null, json: false, rendu: {}, aide: false };
@@ -51,9 +54,18 @@ async function principal(arguments_) {
   }
 
   let anomalies = 0;
+  let echecs = 0;
   for (const fichier of options.fichiers) {
-    const donnees = fs.readFileSync(fichier);
-    const resultat = await convertir(donnees, { nom: path.basename(fichier), rendu: options.rendu });
+    // Un fichier illisible n'arrete pas les suivants : sur un lot, il en
+    // manquerait un et tout serait a refaire.
+    let resultat;
+    try {
+      resultat = await convertir(fs.readFileSync(fichier), { nom: path.basename(fichier), rendu: options.rendu });
+    } catch (erreur) {
+      process.stderr.write(`${fichier} : ${erreur.message}\n`);
+      echecs += 1;
+      continue;
+    }
     const cible = destination(options, resultat.nomSortie);
     if (cible) {
       fs.mkdirSync(path.dirname(path.resolve(cible)), { recursive: true });
@@ -68,6 +80,7 @@ async function principal(arguments_) {
     }
     if (!resultat.verdict.conforme) anomalies += 1;
   }
+  if (echecs) return 1;
   return anomalies ? 2 : 0;
 }
 

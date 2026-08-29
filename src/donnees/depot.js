@@ -165,11 +165,16 @@ class Depot {
 
   // ---------------------------------------------------------- conversions
 
-  enregistrerConversion(idOrganisation, resultat) {
+  nouveauLot() {
+    return identifiant('lot');
+  }
+
+  enregistrerConversion(idOrganisation, resultat, options = {}) {
     const { facture, verdict, markdown } = resultat;
     const fiche = {
       id: identifiant('cnv'),
       organisation: idOrganisation,
+      lot: options.lot || null,
       creeLe: new Date().toISOString(),
       fichier: facture.meta.source,
       format: facture.meta.format,
@@ -195,9 +200,19 @@ class Depot {
     return fiche;
   }
 
-  listerConversions(idOrganisation, { limite = 25, depart = 0 } = {}) {
-    const toutes = this.index.filter((fiche) => fiche.organisation === idOrganisation);
+  listerConversions(idOrganisation, { limite = 25, depart = 0, lot = null } = {}) {
+    const toutes = this.index.filter((fiche) => fiche.organisation === idOrganisation
+      && (lot == null || fiche.lot === lot));
     return { total: toutes.length, fiches: toutes.slice(depart, depart + limite) };
+  }
+
+  // Les Markdown d'un lot, dans l'ordre ou les factures ont ete deposees.
+  markdownDuLot(idOrganisation, lot) {
+    const fiches = this.index
+      .filter((fiche) => fiche.organisation === idOrganisation && fiche.lot === lot)
+      .reverse();
+    if (!fiches.length) return null;
+    return fiches.map((fiche) => this.markdown(idOrganisation, fiche.id)).filter((texte) => texte != null);
   }
 
   conversion(idOrganisation, id) {

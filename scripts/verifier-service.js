@@ -53,9 +53,27 @@ async function principal() {
     fs.writeFileSync(sortie, texte);
     process.stdout.write(`\nMarkdown ecrit dans ${sortie}\n`);
 
+    // Un lot : trois factures d'un coup, dont une illisible.
+    const lot = new FormData();
+    lot.append('fichier', new Blob([fs.readFileSync(EXEMPLE)]), 'aout-01.md');
+    lot.append('fichier', new Blob([fs.readFileSync(EXEMPLE)]), 'aout-02.md');
+    lot.append('fichier', new Blob(['   ']), 'vide.md');
+    const deposeLot = await fetch(`${base}/api/v1/lots`, {
+      method: 'POST', body: lot, headers: { authorization: `Bearer ${cle}` }
+    });
+    verifier(deposeLot.status === 201, 'un lot de factures est accepte');
+    const corpsLot = await deposeLot.json();
+    verifier(corpsLot.lot.lues === 2 && corpsLot.lot.illisibles === 1,
+      'une facture illisible n\'arrete pas le reste du lot');
+    const markdownLot = await fetch(`${base}/api/v1/lots/${corpsLot.lot.id}/markdown`, {
+      headers: { authorization: `Bearer ${cle}` }
+    });
+    verifier((await markdownLot.text()).split(/^# Facture/m).length - 1 === 2,
+      'les Markdown du lot reviennent bout a bout');
+
     const refus = await fetch(`${base}/api/v1/conversions`, { method: 'POST', body: 'x' });
     verifier(refus.status === 401, 'un depot sans cle est refuse');
-    verifier(depot.listerConversions(organisation.id).total === 1, "l'historique tient a jour");
+    verifier(depot.listerConversions(organisation.id).total === 3, "l'historique tient a jour");
   } finally {
     serveur.close();
   }

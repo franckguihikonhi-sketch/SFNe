@@ -96,4 +96,5 @@ button.lien, .lien { background: none; border: none; color: var(--doux); text-de
 .tableau th, .tableau td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--trait); }
 .tableau th { color: var(--doux); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
 .droite { text-align: right; }
+.echec { color: var(--erreur); }
 footer { color: var(--doux); font-size: 12px; text-align: center; padding: 0 16px 40px; }

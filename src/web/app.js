@@ -144,14 +144,79 @@
     URL.revokeObjectURL(url);
   }
 
-  async function envoyer(fichier) {
+  // Un lot depose : une ligne par facture, son sort a cote.
+  function montrerLot(reponse) {
+    const lot = reponse.lot;
+    const etat = element('lot-etat');
+    const sansSouci = lot.illisibles === 0 && lot.avecAnomalies === 0 && !lot.refusesQuota;
+    etat.textContent = sansSouci ? 'Tout est passé' : 'À regarder';
+    etat.className = `etat ${sansSouci ? 'ok' : 'anomalies'}`;
+    const morceaux = [`${lot.lues} facture(s) lue(s) sur ${lot.total}`];
+    if (lot.avecAnomalies) morceaux.push(`${lot.avecAnomalies} avec anomalies`);
+    if (lot.illisibles) morceaux.push(`${lot.illisibles} illisible(s)`);
+    if (lot.refusesQuota) morceaux.push(`${lot.refusesQuota} refusée(s) faute de quota`);
+    element('lot-resume').textContent = morceaux.join(' · ');
+
+    const corps = element('lot-corps');
+    corps.innerHTML = '';
+    for (const entree of reponse.conversions) {
+      const fiche = entree.conversion;
+      const ligne = document.createElement('tr');
+      const cellules = [
+        entree.fichier,
+        fiche ? (fiche.numero || '—') : '—',
+        fiche ? (fiche.client || '—') : '—',
+        fiche ? formaterMontant(fiche.netAPayer, fiche.devise) : '—',
+        entree.erreur ? entree.erreur.message : (entree.conforme ? 'cohérent' : 'anomalies')
+      ];
+      cellules.forEach((valeur, rang) => {
+        const cellule = document.createElement('td');
+        if (rang === 3) cellule.className = 'droite';
+        if (rang === 4 && entree.erreur) cellule.className = 'echec';
+        cellule.textContent = valeur;
+        ligne.append(cellule);
+      });
+      const action = document.createElement('td');
+      if (fiche) {
+        const bouton = document.createElement('button');
+        bouton.type = 'button';
+        bouton.className = 'lien';
+        bouton.textContent = 'Markdown';
+        bouton.addEventListener('click', async () => {
+          telecharger(await appeler(`/api/v1/conversions/${fiche.id}/markdown`), entree.nomSortie || `${fiche.id}.md`);
+        });
+        action.append(bouton);
+      }
+      ligne.append(action);
+      corps.append(ligne);
+    }
+
+    element('lot-telecharger').onclick = async () => {
+      telecharger(await appeler(`/api/v1/lots/${lot.id}/markdown`), `${lot.id}.md`);
+    };
+    afficher(element('lot'), true);
+    afficher(element('resultat'), false);
+    element('lot').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function envoyer(fichiers) {
+    const liste = [...fichiers];
+    if (!liste.length) return;
     texteErreur(element('erreur-depot'), '');
+    element('attente').textContent = liste.length > 1
+      ? `Lecture de ${liste.length} factures…`
+      : 'Lecture de la facture…';
     afficher(element('attente'), true);
     try {
       const formulaire = new FormData();
-      formulaire.append('fichier', fichier, fichier.name);
-      const reponse = await appeler('/api/v1/conversions', { method: 'POST', body: formulaire });
-      montrerResultat(reponse);
+      for (const fichier of liste) formulaire.append('fichier', fichier, fichier.name);
+      const route = liste.length > 1 ? '/api/v1/lots' : '/api/v1/conversions';
+      const reponse = await appeler(route, { method: 'POST', body: formulaire });
+      if (liste.length > 1) montrerLot(reponse);
+      else {
+        afficher(element('lot'), false);
+        montrerResultat(reponse);
+      }
       majQuota(reponse.quota);
       await chargerHistorique();
     } catch (erreur) {
@@ -202,7 +267,7 @@
     if (evenement.key === 'Enter' || evenement.key === ' ') champFichier.click();
   });
   champFichier.addEventListener('change', () => {
-    if (champFichier.files[0]) envoyer(champFichier.files[0]);
+    envoyer(champFichier.files);
     champFichier.value = '';
   });
   ['dragenter', 'dragover'].forEach((nom) => zone.addEventListener(nom, (evenement) => {
@@ -213,10 +278,7 @@
     evenement.preventDefault();
     zone.classList.remove('survol');
   }));
-  zone.addEventListener('drop', (evenement) => {
-    const fichier = evenement.dataTransfer.files[0];
-    if (fichier) envoyer(fichier);
-  });
+  zone.addEventListener('drop', (evenement) => envoyer(evenement.dataTransfer.files));
 
   element('copier').addEventListener('click', async () => {
     if (dernierMarkdown) await navigator.clipboard.writeText(dernierMarkdown);

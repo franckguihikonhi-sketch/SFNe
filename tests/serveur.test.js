@@ -25,7 +25,14 @@ async function service() {
     formulaire.append('fichier', new Blob([contenu], { type: 'text/markdown' }), nom);
     return appeler(chemin, { method: 'POST', body: formulaire });
   };
-  return { depot, organisation, cle, serveur, base, appeler, deposer, fermer: () => serveur.close() };
+  const deposerLot = (fichiers, chemin = '/api/v1/lots') => {
+    const formulaire = new FormData();
+    for (const [nom, contenu] of fichiers) {
+      formulaire.append('fichier', new Blob([contenu], { type: 'text/markdown' }), nom);
+    }
+    return appeler(chemin, { method: 'POST', body: formulaire });
+  };
+  return { depot, organisation, cle, serveur, base, appeler, deposer, deposerLot, fermer: () => serveur.close() };
 }
 
 test('le service repond sur /sante sans cle', async (t) => {
@@ -167,4 +174,98 @@ test('les requetes trop nombreuses sont freinees', async (t) => {
   const troisieme = await appeler();
   assert.equal(troisieme.status, 429);
   assert.ok(Number(troisieme.headers.get('retry-after')) > 0);
+});
+
+test('un lot depose plusieurs factures en un envoi', async (t) => {
+  const s = await service();
+  t.after(s.fermer);
+  const reponse = await s.deposerLot([
+    ['aout-01.md', EXEMPLE],
+    ['aout-02.md', EXEMPLE],
+    ['aout-03.md', EXEMPLE]
+  ]);
+  assert.equal(reponse.status, 201);
+  const corps = await reponse.json();
+  assert.equal(corps.lot.total, 3);
+  assert.equal(corps.lot.lues, 3);
+  assert.equal(corps.lot.conformes, 3);
+  assert.equal(corps.lot.illisibles, 0);
+  assert.equal(corps.conversions.length, 3);
+  assert.deepEqual(corps.conversions.map((entree) => entree.fichier), ['aout-01.md', 'aout-02.md', 'aout-03.md']);
+  assert.equal(corps.quota.consomme, 3);
+  assert.match(reponse.headers.get('location'), /^\/api\/v1\/lots\/lot_/);
+});
+
+test('une facture illisible n\'arrete pas le reste du lot', async (t) => {
+  const s = await service();
+  t.after(s.fermer);
+  const corps = await (await s.deposerLot([
+    ['bonne.md', EXEMPLE],
+    ['vide.md', '   '],
+    ['autre.md', EXEMPLE]
+  ])).json();
+  assert.equal(corps.lot.lues, 2);
+  assert.equal(corps.lot.illisibles, 1);
+  assert.equal(corps.conversions[1].erreur.code, 'entree_invalide');
+  assert.ok(corps.conversions[0].conversion.id);
+  assert.ok(corps.conversions[2].conversion.id);
+});
+
+test('un lot se relit, et ses Markdown se recuperent bout a bout', async (t) => {
+  const s = await service();
+  t.after(s.fermer);
+  const { lot } = await (await s.deposerLot([['a.md', EXEMPLE], ['b.md', EXEMPLE]])).json();
+
+  const detail = await (await s.appeler(`/api/v1/lots/${lot.id}`)).json();
+  assert.equal(detail.total, 2);
+  assert.deepEqual(detail.fiches.map((fiche) => fiche.lot), [lot.id, lot.id]);
+
+  const markdown = await s.appeler(`/api/v1/lots/${lot.id}/markdown?telecharger=oui`);
+  const texte = await markdown.text();
+  assert.match(markdown.headers.get('content-disposition'), /attachment/);
+  assert.equal(texte.split(/^# Facture/m).length - 1, 2);
+  assert.equal((await s.appeler('/api/v1/lots/lot_inconnu')).status, 404);
+});
+
+test('le Markdown d\'un lot peut revenir directement', async (t) => {
+  const s = await service();
+  t.after(s.fermer);
+  const reponse = await s.deposerLot([['a.md', EXEMPLE], ['b.md', EXEMPLE]], '/api/v1/lots?format=markdown');
+  assert.equal(reponse.status, 201);
+  assert.match(reponse.headers.get('content-type'), /text\/markdown/);
+  assert.ok(reponse.headers.get('x-lot-id').startsWith('lot_'));
+  assert.equal((await reponse.text()).split(/^# Facture/m).length - 1, 2);
+});
+
+test('ce qui depasse le quota est refuse fichier par fichier, le reste passe', async (t) => {
+  const s = await service();
+  t.after(s.fermer);
+  const petite = s.depot.creerOrganisation({ nom: 'Petite', plan: 'essai' });
+  for (let compte = 0; compte < 28; compte += 1) {
+    s.depot.index.unshift({ id: `cnv_${compte}`, organisation: petite.organisation.id, creeLe: new Date().toISOString() });
+  }
+  const formulaire = new FormData();
+  for (const nom of ['a.md', 'b.md', 'c.md', 'd.md']) {
+    formulaire.append('fichier', new Blob([EXEMPLE]), nom);
+  }
+  const corps = await (await fetch(`${s.base}/api/v1/lots`, {
+    method: 'POST', body: formulaire, headers: { authorization: `Bearer ${petite.cle}` }
+  })).json();
+  assert.equal(corps.lot.lues, 2);
+  assert.equal(corps.lot.refusesQuota, 2);
+  assert.equal(corps.conversions[2].erreur.code, 'quota_depasse');
+  assert.equal(corps.quota.consomme, 30);
+});
+
+test('un lot sans fichier ou hors formulaire est refuse', async (t) => {
+  const s = await service();
+  t.after(s.fermer);
+  const brut = await s.appeler('/api/v1/lots', { method: 'POST', headers: { 'content-type': 'text/markdown' }, body: EXEMPLE });
+  assert.equal(brut.status, 400);
+  assert.match((await brut.json()).erreur.message, /multipart/);
+
+  const vide = new FormData();
+  vide.append('note', 'sans fichier');
+  const sansFichier = await s.appeler('/api/v1/lots', { method: 'POST', body: vide });
+  assert.equal(sansFichier.status, 400);
 });

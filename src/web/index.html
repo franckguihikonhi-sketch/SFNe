@@ -39,12 +39,29 @@
   <section class="carte" id="depot" hidden>
     <h1>Déposer une facture</h1>
     <div class="zone" id="zone" tabindex="0" role="button" aria-label="Déposer un fichier">
-      <p class="zone-titre">Glissez le PDF de la facture ici</p>
-      <p class="aide">ou cliquez pour choisir un fichier — PDF, Markdown ou texte, 15 Mo au plus</p>
-      <input type="file" id="champ-fichier" accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain" hidden>
+      <p class="zone-titre">Glissez vos factures ici</p>
+      <p class="aide">une ou plusieurs — Markdown, PDF ou texte, jusqu'à 200 par envoi</p>
+      <input type="file" id="champ-fichier" multiple accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain" hidden>
     </div>
     <p class="erreur" id="erreur-depot" hidden></p>
     <p class="attente" id="attente" hidden>Lecture de la facture…</p>
+  </section>
+
+  <section class="carte" id="lot" hidden>
+    <div class="entete-resultat">
+      <h1>Lot déposé</h1>
+      <span class="etat" id="lot-etat"></span>
+    </div>
+    <p class="aide" id="lot-resume"></p>
+    <div class="actions">
+      <button type="button" id="lot-telecharger">Télécharger le lot (.md)</button>
+    </div>
+    <table class="tableau">
+      <thead>
+        <tr><th>Fichier</th><th>Numéro</th><th>Client</th><th class="droite">Net à payer</th><th>État</th><th></th></tr>
+      </thead>
+      <tbody id="lot-corps"></tbody>
+    </table>
   </section>
 
   <section class="carte" id="resultat" hidden>

@@ -13,7 +13,7 @@ Les montants sont en francs CFA, entiers : la monnaie n'a pas de subdivision.
 | Chemin | Ce qu'on y fait |
 | --- | --- |
 | **Interface** | Deposer un PDF, voir la facture lue, ses controles, et telecharger le `.md` |
-| **API** | Poster une facture, recuperer le Markdown, relire l'historique de l'organisation |
+| **API** | Poster une facture ou un lot entier, recuperer les Markdown, relire l'historique |
 | **Ligne de commande** | Convertir un ou plusieurs fichiers, en Markdown et en JSON |
 
 Trois choses sont tirees de chaque facture : **ce qu'elle dit** (emetteur,
@@ -47,8 +47,10 @@ node src/cli.js facture.pdf --sortie facture.md    # dans un fichier
 node src/cli.js *.pdf --sortie ./converties --json # en lot, avec le JSON a cote
 ```
 
-Le code de sortie vaut `0` si la facture se tient, `2` si un controle a echoue :
-de quoi enchainer dans un script de comptabilite.
+Un fichier illisible n'arrete pas les suivants. Le code de sortie vaut `0` si
+tout est lu et coherent, `2` si une facture porte des anomalies, `1` si un
+fichier au moins n'a pas pu etre lu : de quoi enchainer dans un script de
+comptabilite.
 
 ## L'API
 
@@ -57,6 +59,9 @@ Toutes les routes `/api/v1` demandent l'entete `Authorization: Bearer <cle>`.
 | Verbe | Route | Effet |
 | --- | --- | --- |
 | `POST` | `/api/v1/conversions` | Depose une facture, rend la facture lue, ses controles et son Markdown |
+| `POST` | `/api/v1/lots` | Depose un lot de factures en un envoi |
+| `GET` | `/api/v1/lots/:id` | Les conversions d'un lot |
+| `GET` | `/api/v1/lots/:id/markdown` | Les Markdown d'un lot, bout a bout |
 | `GET` | `/api/v1/conversions` | L'historique de l'organisation |
 | `GET` | `/api/v1/conversions/:id` | Le detail d'une conversion |
 | `GET` | `/api/v1/conversions/:id/markdown` | Le fichier Markdown seul |
@@ -75,6 +80,31 @@ curl -H "Authorization: Bearer $SFNE_CLE" \
      -F fichier=@facture.pdf \
      "http://localhost:3000/api/v1/conversions?format=markdown" -o facture.md
 ```
+
+### En masse
+
+Un cabinet ne depose pas ses factures une par une. `POST /api/v1/lots` prend
+jusqu'a **200 fichiers par envoi** (60 Mo au total), en Markdown comme en PDF :
+
+```sh
+curl -H "Authorization: Bearer $SFNE_CLE" \
+     -F fichier=@aout-001.md -F fichier=@aout-002.md -F fichier=@aout-003.md \
+     http://localhost:3000/api/v1/lots
+
+# Tous les Markdown du lot en un seul fichier
+curl -H "Authorization: Bearer $SFNE_CLE" \
+     "http://localhost:3000/api/v1/lots/$LOT/markdown" -o aout.md
+```
+
+La reponse porte le compte du lot (`total`, `lues`, `illisibles`, `conformes`,
+`avecAnomalies`) et **une entree par fichier**, avec sa conversion ou sa raison
+d'echec. Une facture illisible n'arrete pas les autres : sur un lot de fin de
+mois, il en manquerait une et tout serait a refaire. Ce qui depasse le quota du
+mois est refuse fichier par fichier, le reste passe.
+
+Dans l'interface, la zone de depot accepte plusieurs fichiers d'un coup et
+rend un tableau : une ligne par facture, son numero, son client, son net a
+payer, son etat, et le lot entier a telecharger.
 
 Options du rendu : `?controles=non` et `?provenance=non` retirent ces sections.
 Un envoi sans formulaire marche aussi : le corps brut, avec l'entete
@@ -177,8 +207,8 @@ plutot que dans le code qui les cherche.
 ## Verifier
 
 ```sh
-npm test       # 57 tests : texte, analyse, controles, rendu, PDF, depot, API, CLI
-npm run verifier # demarre le service, depose la facture d'exemple, relit le Markdown
+npm test       # 68 tests : texte, analyse, controles, rendu, PDF, depot, API, lots, CLI
+npm run verifier # demarre le service, depose une facture puis un lot, relit les Markdown
 ```
 
 Les deux tournent a chaque poussee et sur chaque demande de fusion
@@ -186,6 +216,9 @@ Les deux tournent a chaque poussee et sur chaque demande de fusion
 
 ## Ce que le service ne fait pas
 
+- **Aucun texte hors facture.** Un fichier sans numero, sans ligne et sans
+  total est refuse : ce n'est pas une facture, et il n'a rien a faire dans
+  l'historique.
 - **Un PDF scanne** (une image, sans couche de texte) est refuse avec une raison
   claire. Il faudrait une reconnaissance optique, qui n'est pas ici.
 - **Aucun appel a la DGI.** Le service lit ce que la facture porte ; il ne va pas

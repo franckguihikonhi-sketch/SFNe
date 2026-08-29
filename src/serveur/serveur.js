@@ -3,6 +3,9 @@
 // Le service HTTP : deposer une facture, recuperer son Markdown.
 //
 //   POST   /api/v1/conversions            depose une facture, rend le Markdown
+//   POST   /api/v1/lots                  depose un lot de factures d'un coup
+//   GET    /api/v1/lots/:id              les conversions d'un lot
+//   GET    /api/v1/lots/:id/markdown     les Markdown d'un lot, bout a bout
 //   GET    /api/v1/conversions            l'historique de l'organisation
 //   GET    /api/v1/conversions/:id        le detail d'une conversion
 //   GET    /api/v1/conversions/:id/markdown   le fichier Markdown seul
@@ -16,7 +19,7 @@
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const { convertir } = require('../convertir');
+const { convertir, convertirLot, assemblerMarkdown } = require('../convertir');
 const { EntreeInvalide } = require('../extraction/entree');
 const {
   lireCorps, analyserMultipart, repondreJson, repondreTexte, repondreErreur,
@@ -24,6 +27,10 @@ const {
 } = require('./http');
 
 const DOSSIER_WEB = path.join(__dirname, '..', 'web');
+// Un lot de fin de mois pese plus qu'une facture : on lui laisse de la place,
+// sans permettre d'y noyer le service.
+const TAILLE_LOT = 60 * 1024 * 1024;
+const LOT_MAXI = 200;
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -123,6 +130,90 @@ function creerServeur(options = {}) {
         cle: { id: identite.cle.id, nom: identite.cle.nom, prefixe: identite.cle.prefixe },
         quota: depot.quota(organisation.id)
       });
+      return;
+    }
+
+    const lotDemande = chemin.match(/^\/api\/v1\/lots\/([A-Za-z0-9_-]+)(\/markdown)?$/);
+
+    if (chemin === '/api/v1/lots' && requete.method === 'POST') {
+      const type = String(requete.headers['content-type'] || '');
+      if (!type.startsWith('multipart/form-data')) {
+        throw new RequeteInvalide('Un lot se depose en multipart/form-data, un champ « fichier » par facture.');
+      }
+      const corps = await lireCorps(requete, TAILLE_LOT);
+      const parties = analyserMultipart(corps, type).filter((partie) => partie.nomFichier);
+      if (!parties.length) throw new RequeteInvalide('Aucun fichier dans le lot.');
+      if (parties.length > LOT_MAXI) {
+        throw new RequeteInvalide(`Lot de ${parties.length} fichiers : ${LOT_MAXI} au maximum par envoi.`);
+      }
+
+      // Ce qui depasse le quota est refuse fichier par fichier : le reste du
+      // lot passe quand meme.
+      const quota = depot.quota(organisation.id);
+      const place = Number.isFinite(quota.restant) ? quota.restant : parties.length;
+      const retenues = parties.slice(0, place);
+      const refusees = parties.slice(place);
+
+      const lot = depot.nouveauLot();
+      const rendu = {
+        controles: url.searchParams.get('controles') !== 'non',
+        provenance: url.searchParams.get('provenance') !== 'non'
+      };
+      const { resultats, resume } = await convertirLot(
+        retenues.map((partie) => ({ nom: path.basename(partie.nomFichier), donnees: partie.contenu })),
+        { rendu }
+      );
+
+      const conversions = resultats.map((entree) => {
+        if (!entree.resultat) return { fichier: entree.nom, erreur: entree.erreur };
+        const fiche = depot.enregistrerConversion(organisation.id, entree.resultat, { lot });
+        return {
+          fichier: entree.nom,
+          conversion: fiche,
+          conforme: entree.resultat.verdict.conforme,
+          nomSortie: entree.resultat.nomSortie
+        };
+      });
+      for (const refusee of refusees) {
+        conversions.push({
+          fichier: path.basename(refusee.nomFichier),
+          erreur: { code: 'quota_depasse', message: `Quota mensuel atteint (${quota.consomme}/${quota.limite}).` }
+        });
+      }
+
+      journaliser(`${organisation.nom} ${lot} ${resume.lues}/${resume.total} lues, ${resume.avecAnomalies} avec anomalies`);
+
+      if (url.searchParams.get('format') === 'markdown') {
+        const documents = resultats.filter((entree) => entree.resultat).map((entree) => entree.resultat.markdown);
+        repondreTexte(reponse, 201, assemblerMarkdown(documents), 'text/markdown; charset=utf-8', {
+          location: `/api/v1/lots/${lot}`,
+          'x-lot-id': lot
+        });
+        return;
+      }
+      repondreJson(reponse, 201, {
+        lot: { id: lot, ...resume, refusesQuota: refusees.length },
+        conversions,
+        quota: depot.quota(organisation.id)
+      }, { location: `/api/v1/lots/${lot}` });
+      return;
+    }
+
+    if (lotDemande && requete.method === 'GET') {
+      const { fiches, total } = depot.listerConversions(organisation.id, { lot: lotDemande[1], limite: LOT_MAXI });
+      if (!total) {
+        repondreErreur(reponse, 404, 'introuvable', 'Lot inconnu.');
+        return;
+      }
+      if (lotDemande[2]) {
+        const documents = depot.markdownDuLot(organisation.id, lotDemande[1]) || [];
+        const entetes = url.searchParams.get('telecharger') === 'oui'
+          ? { 'content-disposition': `attachment; filename="${lotDemande[1]}.md"` }
+          : {};
+        repondreTexte(reponse, 200, assemblerMarkdown(documents), 'text/markdown; charset=utf-8', entetes);
+        return;
+      }
+      repondreJson(reponse, 200, { lot: lotDemande[1], total, fiches });
       return;
     }
 
