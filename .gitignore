@@ -1,0 +1,6 @@
+node_modules/
+# Le depot de donnees du service, a la racine seulement : src/donnees/ est du
+# code, pas des donnees.
+/donnees/
+*.log
+.env

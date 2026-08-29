@@ -1,0 +1,35 @@
+# Verification automatique : les tests, puis un aller-retour reel sur le
+# service. Le second compte autant que le premier : un convertisseur dont les
+# tests passent mais dont l'API ne repond pas ne sert a rien.
+
+name: Verification
+
+on:
+  push:
+    branches: [main, 'claude/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verification:
+    name: Tests et service
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Installation
+        run: npm ci
+
+      - name: Tests
+        run: npm test
+
+      - name: Verification du service
+        run: npm run verifier
