@@ -83,6 +83,23 @@ test('les taxes d\'une ligne se lisent code par code', () => {
   assert.deepEqual(facture.lignes[1].taxes, [{ code: 'EXO', taux: 0 }]);
 });
 
+test('le resume des taxes se lit en tableau comme en colonnes espacees', () => {
+  const enTableau = analyser([
+    'Facture de vente Nº 123456',
+    'RESUME DE LA FACTURE',
+    '| TVA normal - TVA sur HT 18,00% - A | 21 546 | 18% | 3 878 |'
+  ].join('\n'));
+  const enColonnes = analyser([
+    'Facture de vente Nº 123456',
+    'RESUME DE LA FACTURE',
+    'CATEGORIE  SOUS-TOTAL  TAUX (%)  TOTAL TAXES',
+    'TVA normal - TVA sur HT 18,00% - A  21 546  18%  3 878'
+  ].join('\n'));
+  const attendu = [{ libelle: 'TVA normal - TVA sur HT 18,00% - A', base: 21546, taux: 18, montant: 3878 }];
+  assert.deepEqual(enTableau.taxes, attendu);
+  assert.deepEqual(enColonnes.taxes, attendu);
+});
+
 test('les lignes que rien ne reconnait sont signalees, jamais perdues', () => {
   const facture = analyser('Facture de vente Nº 123456789\nUne mention libre de l\'editeur');
   assert.ok(facture.nonLues.includes("Une mention libre de l'editeur"));

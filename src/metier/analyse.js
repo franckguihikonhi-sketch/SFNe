@@ -8,7 +8,7 @@
 
 const { enLignes, estLigneTableau, cellulesDe, normaliserEspaces, estNumerique, versNombre, versDate, sansAccent } = require('./texte');
 const { extraireChamps, ligneEntierementLue } = require('./champs');
-const { VENDEUR, CLIENT, DOCUMENT, TOTAUX, COLONNES } = require('./dictionnaires');
+const { VENDEUR, VENDEUR_SEUL, CLIENT, DOCUMENT, TOUTES, TOTAUX, COLONNES } = require('./dictionnaires');
 
 const DEVISE_PAR_DEFAUT = 'XOF';
 
@@ -25,6 +25,11 @@ function estEnteteResume(ligne) {
   return /^resume de la facture$/.test(c) || /^recapitulatif( des taxes)?$/.test(c) || /^resume des taxes$/.test(c);
 }
 
+// Les mentions legales du bas de page, qu'aucune colonne ne structure.
+function estPiedDePage(ligne) {
+  return /siege social|siège social|compte bancaire|tel\.?\s*:|rccm/i.test(ligne) || ligne.length > 90;
+}
+
 // ---------------------------------------------------------------- decoupage
 
 function decouper(lignes) {
@@ -32,6 +37,7 @@ function decouper(lignes) {
   const origine = { entete: [], client: [], lignes: [], resume: [], pied: [] };
   let zone = 'entete';
   let tableauVu = false;
+  let totauxVus = false;
 
   lignes.forEach((ligne, rang) => {
     if (estEnteteResume(ligne)) {
@@ -46,10 +52,23 @@ function decouper(lignes) {
       zone = 'lignes';
     }
     if (zone === 'lignes') {
-      if (estLigneTableau(ligne) || cellulesLigne(ligne).length >= 2) tableauVu = true;
-      else if (tableauVu) zone = 'pied';
+      const cellules = cellulesLigne(ligne);
+      if (estLigneTableau(ligne) || cellules.length >= 2) {
+        tableauVu = true;
+        // « Montant HT » est aussi le nom d'une colonne : une ligne de totaux
+        // porte, elle, un montant.
+        if (cellules.some((cellule) => cleTotal(cellule)) && cellules.some(estNumerique)) totauxVus = true;
+      } else if (tableauVu && (totauxVus || estPiedDePage(ligne))) {
+        // Avant les totaux, une ligne sans colonne est la suite d'une
+        // designation trop longue pour tenir : « (4*2.5kg) » sous son article.
+        zone = 'pied';
+      }
     }
-    if (zone === 'resume' && !estLigneTableau(ligne) && zones.resume.length) zone = 'pied';
+    // Le resume des taxes se donne en tableau dans un Markdown, en colonnes
+    // espacees dans un PDF. Il se termine a la premiere ligne qui n'a plus de
+    // colonnes du tout : le pied de page.
+    if (zone === 'resume' && zones.resume.length
+      && !estLigneTableau(ligne) && cellulesLigne(ligne).length < 2) zone = 'pied';
     zones[zone].push(ligne);
     origine[zone].push(rang);
   });
@@ -163,6 +182,15 @@ const RE_LIGNE_TEXTE = new RegExp(
   '(\\d[\\d ]*(?:[.,]\\d+)?)$'
 );
 
+// Une suite de designation : courte, sans etiquette, sans allure de total.
+function estSuiteDeDesignation(ligne) {
+  const texte = normaliserEspaces(ligne);
+  if (!texte || texte.length > 60) return false;
+  if (/[:=]/.test(texte)) return false;
+  if (estPiedDePage(texte)) return false;
+  return cleTotal(texte) == null && !estNumerique(texte);
+}
+
 // Le detail de la facture : les lignes d'article puis les totaux.
 function lireDetail(lignesZone) {
   const articles = [];
@@ -177,6 +205,13 @@ function lireDetail(lignesZone) {
     const cellules = cellulesLigne(ligne);
 
     if (cellules.length < 2) {
+      // Une designation trop longue passe a la ligne, sans colonnes ni
+      // etiquette. Elle appartient a l'article qui precede.
+      const dernier = articles[articles.length - 1];
+      if (dernier && !Object.keys(totaux).length && estSuiteDeDesignation(ligne)) {
+        dernier.designation = `${dernier.designation || ''} ${normaliserEspaces(ligne)}`.trim();
+        continue;
+      }
       const trouve = ligne.match(RE_LIGNE_TEXTE);
       if (trouve) {
         articles.push({
@@ -205,8 +240,9 @@ function lireDetail(lignesZone) {
       }
     }
 
-    // Une ligne de totaux : un libelle reconnu, un montant a droite.
-    const libelle = cellules.find((cellule) => cleTotal(cellule));
+    // Une ligne de totaux : un libelle reconnu, un montant a droite. Sans
+    // montant, c'est l'entete du tableau, pas un total.
+    const libelle = cellules.some(estNumerique) ? cellules.find((cellule) => cleTotal(cellule)) : null;
     if (libelle) {
       const montants = cellules.map(versNombre).filter((n) => n != null);
       if (montants.length) noterTotal(cleTotal(libelle), montants[montants.length - 1]);
@@ -241,9 +277,9 @@ function lireDetail(lignesZone) {
 function lireResume(lignesZone) {
   const resume = [];
   for (const ligne of lignesZone) {
-    const cellules = estLigneTableau(ligne)
-      ? cellulesDe(ligne)
-      : normaliserEspaces(ligne).split(/\s{2,}/);
+    // Les memes colonnes que partout ailleurs : normaliserEspaces ecraserait
+    // les deux espaces qui separent justement les colonnes d'un PDF.
+    const cellules = cellulesLigne(ligne);
     if (cellules.length < 3) continue;
     const libelle = normaliserEspaces(cellules[0]);
     if (!libelle || estNumerique(libelle)) continue;
@@ -293,7 +329,10 @@ function analyser(texte, options = {}) {
   const marquer = (zone) => origine[zone].forEach((rang) => consommees.add(rang));
 
   const identite = lireIdentite([...zones.entete, ...zones.client, ...zones.pied]);
-  const vendeur = extraireChamps(zones.entete, VENDEUR);
+  // Sur un PDF, les colonnes du vendeur et du client s'entremelent : les
+  // etiquettes qui ne peuvent etre que celles du vendeur lui reviennent, meme
+  // lues sous le titre « Client ». L'entete garde le dernier mot.
+  const vendeur = { ...extraireChamps(zones.client, VENDEUR_SEUL), ...extraireChamps(zones.entete, VENDEUR) };
   const client = extraireChamps(zones.client, CLIENT);
   const documentEntete = extraireChamps([...zones.entete, ...zones.client, ...zones.pied], DOCUMENT);
   const piedVendeur = extraireChamps(zones.pied, VENDEUR);
@@ -307,9 +346,8 @@ function analyser(texte, options = {}) {
 
   // Les lignes d'entete entierement faites d'etiquettes connues sont lues.
   ['entete', 'client', 'pied'].forEach((zone) => {
-    const dictionnaire = zone === 'client' ? CLIENT : { ...VENDEUR, ...DOCUMENT };
     zones[zone].forEach((ligne, rang) => {
-      if (ligneEntierementLue(ligne, dictionnaire) || RE_NUMERO.test(ligne)) {
+      if (ligneEntierementLue(ligne, TOUTES) || RE_NUMERO.test(ligne)) {
         consommees.add(origine[zone][rang]);
       }
     });
@@ -345,6 +383,7 @@ function analyser(texte, options = {}) {
       regimeImposition: nonVide(vendeur.regimeImposition),
       nomVendeur: nonVide(vendeur.nomVendeur),
       pointDeVente: nonVide(vendeur.pointDeVente),
+      centreImpots: nonVide(vendeur.centreImpots),
       siegeSocial: nonVide(vendeur.siegeSocial || piedVendeur.siegeSocial),
       referencesBancaires: nonVide(vendeur.referencesBancaires || piedVendeur.referencesBancaires)
     },

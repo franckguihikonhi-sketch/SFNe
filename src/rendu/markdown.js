@@ -186,6 +186,7 @@ function versMarkdown(facture, verdict, options = {}) {
     ['NCC', facture.vendeur.ncc],
     ['RCCM', facture.vendeur.rccm],
     ["Régime d'imposition", facture.vendeur.regimeImposition],
+    ['Centre des impôts', facture.vendeur.centreImpots],
     ['Adresse', facture.vendeur.adresse],
     ['Siège social', facture.vendeur.siegeSocial],
     ['Téléphone', facture.vendeur.telephone],

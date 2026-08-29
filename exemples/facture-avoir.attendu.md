@@ -20,7 +20,7 @@ sens_comptable: -1
 nombre_de_lignes: 1
 conforme: true
 source: facture-avoir.md
-extrait_le: "2026-08-29T08:14:59.407Z"
+extrait_le: "2026-08-29T08:27:04.043Z"
 extrait_par: SFNe
 ---
 
@@ -120,7 +120,7 @@ extrait_par: SFNe
 | --- | --- |
 | Fichier source | facture-avoir.md |
 | Format lu | markdown |
-| Extrait le | 2026-08-29T08:14:59.407Z |
+| Extrait le | 2026-08-29T08:27:04.043Z |
 | Extrait par | SFNe |
 
 **Lignes du document non rattachées à un champ connu** — reproduites telles quelles :

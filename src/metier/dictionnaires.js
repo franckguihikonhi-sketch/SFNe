@@ -15,14 +15,13 @@ const VENDEUR = {
   nomVendeur: ['Nom du vendeur', 'Vendeur', 'Caissier', 'Agent'],
   pointDeVente: ['Nom de PDV', 'Point de vente', 'PDV', 'Etablissement de vente'],
   referencesBancaires: ['References bancaires', 'Références bancaires', 'Banque', 'Compte bancaire'],
+  centreImpots: ['Centre des impots', 'Centre des impôts', 'Centre gestionnaire', 'Service des impots', 'Service des impôts'],
   siegeSocial: ['Siege Social', 'Siège Social', 'Siege social', 'Siège social']
 };
 
 const CLIENT = {
   nom: ['Nom', 'Raison sociale', 'Client', 'Nom du client', 'Denomination', 'Dénomination'],
   adresse: ['Adresse', 'Adresse du client'],
-  telephone: ['Nº Tel', 'N° Tel', 'No Tel', 'N Tel', 'Tel', 'Tél', 'Telephone', 'Téléphone'],
-  mail: ['Mail', 'Email', 'E-mail', 'Courriel'],
   ncc: ['NCC', 'Numero de compte contribuable', 'Numéro de compte contribuable', 'N° CC'],
   regimeImposition: ["Regime d'imposition", "Régime d'imposition", 'Regime', 'Régime'],
   code: ['Code client', 'Reference client', 'Référence client']
@@ -39,6 +38,18 @@ const DOCUMENT = {
   sticker: ['Sticker', 'Numero de sticker', 'Numéro de sticker', 'Sticker electronique', 'Sticker électronique', 'Jeton', 'Token'],
   urlVerification: ['Lien de verification', 'Lien de vérification', 'Verification', 'Vérification', 'URL']
 };
+
+// Sur un PDF, les deux colonnes de l'entete arrivent entremelees : le bloc du
+// vendeur et celui du client alternent ligne apres ligne. Ces etiquettes-la ne
+// peuvent designer que le vendeur, ou qu'elles apparaissent.
+const VENDEUR_SEUL = Object.fromEntries(Object.entries(VENDEUR).filter(([cle]) => [
+  'raisonSociale', 'telephone', 'mail', 'nomVendeur', 'pointDeVente',
+  'referencesBancaires', 'rccm', 'siegeSocial', 'centreImpots'
+].includes(cle)));
+
+// Toutes les etiquettes connues, pour savoir si une ligne a ete entierement
+// lue ou s'il faut la reporter telle quelle.
+const TOUTES = { ...CLIENT, ...VENDEUR, ...DOCUMENT };
 
 // Les libelles de la colonne des totaux, ramenes a une cle unique.
 const TOTAUX = [
@@ -64,4 +75,4 @@ const COLONNES = [
   { cle: 'montantTTC', motifs: [/montant\s*t\.?t\.?c/, /^total\s*t\.?t\.?c/] }
 ];
 
-module.exports = { VENDEUR, CLIENT, DOCUMENT, TOTAUX, COLONNES };
+module.exports = { VENDEUR, VENDEUR_SEUL, CLIENT, DOCUMENT, TOUTES, TOTAUX, COLONNES };
