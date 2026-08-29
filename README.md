@@ -37,13 +37,46 @@ sticker: 019ff01b-b312-7006-a00d-c122f4a3a4c2
 Le QR ne survit pas a une conversion du PDF en texte : une facture recue en
 Markdown n'a plus de sticker, et le service ne le lui reproche pas.
 
-**La verification aupres de la DGI n'est pas branchee**, et ce n'est pas un
-oubli. La page publique de verification est une application qui rend son verdict
-apres coup : un jeton invente y renvoie exactement la meme reponse qu'un jeton
-valide (meme code HTTP, meme page a l'octet pres). Verifier par cette adresse
-donnerait un controle qui dit toujours « conforme », y compris sur une facture
-fabriquee — pire que pas de verification. Un vrai controle demande l'API FNE de
-la DGI, avec les identifiants de l'entreprise.
+### Verifier le sticker aupres de la DGI
+
+L'API FNE s'obtient sur demande et agrement prealable, avec des cles par
+entreprise : son adresse et la forme de ses reponses ne sont pas publiques.
+Rien n'est donc code en dur. Trois variables suffisent a brancher la
+verification, sans toucher au code :
+
+```sh
+export SFNE_DGI_URL='https://…/factures/{jeton}'   # {jeton} = le sticker
+export SFNE_DGI_CLE='…'                            # la cle remise par la DGI
+export SFNE_DGI_CHAMPS='{"numero":"invoiceNumber","totalTTC":"amountInclTax","ncc":"sellerTin"}'
+```
+
+`SFNE_DGI_CHAMPS` dit ou lire, dans la reponse, le numero de facture, le NCC du
+vendeur, le total et le statut — un chemin pointe (`data.invoiceNumber`) est
+accepte. Au besoin : `SFNE_DGI_ENTETE` et `SFNE_DGI_SCHEMA` (par defaut
+`Authorization: Bearer …`) et `SFNE_DGI_DELAI` (8 s).
+
+Le service confronte alors ce que la DGI repond a ce que la facture porte :
+
+| Ce que la DGI dit | Verdict |
+| --- | --- |
+| Elle connait le sticker, et ses valeurs concordent | ✅ verifiee |
+| Elle connait le sticker, mais son numero, son NCC ou son total different | ❌ discordante |
+| Elle donne la facture pour annulee ou rejetee | ❌ discordante |
+| Elle ne connait pas ce sticker | ❌ inconnue |
+| Elle ne repond pas, ou pas d'une facon exploitable | ⚠️ indisponible |
+
+Trois regles tiennent ce branchement : **la DGI ne fait jamais echouer une
+conversion** (son indisponibilite est une reserve, pas un refus) ; **un sticker
+n'est demande qu'une fois**, meme sur un lot de doublons ; et **sans
+configuration, le verificateur se tait** — il ne rend jamais un verdict qu'il
+n'a pas obtenu.
+
+**Ce sur quoi il ne faut pas brancher :** la page publique de verification. Elle
+rend son verdict cote navigateur, apres coup : un jeton invente y renvoie
+exactement la meme reponse qu'un jeton valide, a l'octet pres. Un controle bati
+dessus repondrait toujours « conforme », y compris sur une facture fabriquee —
+plus dangereux que pas de verification, puisque c'est precisement la fraude
+qu'il est cense attraper.
 
 ## Demarrer
 
@@ -204,6 +237,7 @@ src/
   extraction/   PDF vers texte (pdf.js), reconnaissance du fichier depose
   rendu/        facture vers Markdown
   donnees/      depot : organisations, cles d'API, conversions
+  verification/ confrontation du sticker au registre de la DGI
   serveur/      service HTTP, sans cadre web
   web/          l'interface, une page
 outils/         creation des organisations et des cles
@@ -230,7 +264,7 @@ plutot que dans le code qui les cherche.
 ## Verifier
 
 ```sh
-npm test       # 74 tests : texte, analyse, controles, rendu, PDF, depot, API, lots, CLI
+npm test       # 86 tests : texte, analyse, controles, rendu, PDF, depot, API, lots, CLI
 npm run verifier # demarre le service, depose une facture puis un lot, relit les Markdown
 ```
 
@@ -244,7 +278,7 @@ Les deux tournent a chaque poussee et sur chaque demande de fusion
   l'historique.
 - **Un PDF scanne** (une image, sans couche de texte) est refuse avec une raison
   claire. Il faudrait une reconnaissance optique, qui n'est pas ici.
-- **Aucun appel a la DGI.** Le service lit le sticker que la facture porte,
-  mais ne le confronte pas encore au registre de l'administration : voir
-  « Le sticker electronique ».
+- **Aucun appel a la DGI tant qu'elle n'est pas configuree.** Le service lit
+  toujours le sticker ; il ne le confronte au registre de l'administration que
+  si `SFNE_DGI_URL` est renseignee.
 - **Pas de comptabilite.** Il produit un fichier, pas une ecriture.

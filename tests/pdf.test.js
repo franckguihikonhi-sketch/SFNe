@@ -177,9 +177,10 @@ function factureAvecQr(charge) {
     { texte: 'Etablissement : SOCIETE DEMO NEGOCE', x: 40, y: 770 },
     { texte: 'Client', x: 40, y: 750 },
     { texte: 'Nom : CLIENT DEMO CI', x: 40, y: 730 },
-    { texte: 'Réf  Désignation  P.U HT  Qté  Unité  Taxes (%)  Rem. (%)  Montant HT', x: 40, y: 700, taille: 8 }
   ];
   const colonnes = [40, 95, 265, 320, 360, 400, 460, 505];
+  ['Réf', 'Désignation', 'P.U HT', 'Qté', 'Unité', 'Taxes (%)', 'Rem. (%)', 'Montant HT']
+    .forEach((texte, rang) => blocs.push({ texte, x: colonnes[rang], y: 700, taille: 8 }));
   ['A1', 'RIZ', '1 000', '2', 'SAC', 'TVA (18)', '0', '2 000']
     .forEach((texte, rang) => blocs.push({ texte, x: colonnes[rang], y: 686, taille: 8 }));
   blocs.push({ texte: 'TOTAL A PAYER', x: 380, y: 660, taille: 8 });

@@ -20,6 +20,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { convertir, convertirLot, assemblerMarkdown } = require('../convertir');
+const { creerVerificateur } = require('../verification/dgi');
 const { EntreeInvalide } = require('../extraction/entree');
 const {
   lireCorps, analyserMultipart, repondreJson, repondreTexte, repondreErreur,
@@ -78,6 +79,9 @@ function creerServeur(options = {}) {
   const depot = options.depot;
   if (!depot) throw new Error('Le serveur a besoin d\'un depot.');
   const limiteur = options.limiteur || creerLimiteur(options.limites);
+  // Un seul verificateur pour tout le service : son cache evite de redemander
+  // a la DGI un sticker qu'elle vient de qualifier.
+  const verificateur = options.verificateur || creerVerificateur();
   const journaliser = options.journal === false ? () => {} : (options.journal || ((ligne) => process.stdout.write(`${ligne}\n`)));
 
   async function traiter(requete, reponse) {
@@ -128,7 +132,8 @@ function creerServeur(options = {}) {
       repondreJson(reponse, 200, {
         organisation: { id: organisation.id, nom: organisation.nom, plan: organisation.plan, creeLe: organisation.creeLe },
         cle: { id: identite.cle.id, nom: identite.cle.nom, prefixe: identite.cle.prefixe },
-        quota: depot.quota(organisation.id)
+        quota: depot.quota(organisation.id),
+        verificationDgi: verificateur.configure
       });
       return;
     }
@@ -161,7 +166,7 @@ function creerServeur(options = {}) {
       };
       const { resultats, resume } = await convertirLot(
         retenues.map((partie) => ({ nom: path.basename(partie.nomFichier), donnees: partie.contenu })),
-        { rendu }
+        { rendu, verificateur }
       );
 
       const conversions = resultats.map((entree) => {
@@ -238,6 +243,7 @@ function creerServeur(options = {}) {
       }
       const resultat = await convertir(donnees, {
         nom: nomDeFichier(requete, partie),
+        verificateur,
         rendu: {
           controles: url.searchParams.get('controles') !== 'non',
           provenance: url.searchParams.get('provenance') !== 'non'

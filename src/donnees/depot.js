@@ -188,6 +188,8 @@ class Depot {
       totalHT: facture.totaux.totalHT,
       totalTVA: facture.totaux.totalTVA,
       netAPayer: facture.totaux.netAPayer,
+      sticker: facture.verification ? facture.verification.sticker : null,
+      verification: facture.verification ? facture.verification.etat : null,
       conforme: verdict.conforme,
       compte: verdict.compte,
       octets: Buffer.byteLength(markdown, 'utf8')

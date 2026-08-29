@@ -5,6 +5,7 @@
 
 const { ouvrir } = require('../donnees/depot');
 const { creerServeur } = require('./serveur');
+const { creerVerificateur } = require('../verification/dgi');
 
 function demarrer(options = {}) {
   const depot = options.depot || ouvrir(options.dossier);
@@ -21,7 +22,11 @@ function demarrer(options = {}) {
       ''
     ].join('\n') + '\n');
   }
-  const serveur = creerServeur({ depot, ...options });
+  const verificateur = options.verificateur || creerVerificateur();
+  process.stdout.write(verificateur.configure
+    ? 'Verification des stickers aupres de la DGI : activee.\n'
+    : 'Verification des stickers aupres de la DGI : non configuree (SFNE_DGI_URL absent).\n');
+  const serveur = creerServeur({ depot, verificateur, ...options });
   const port = Number(options.port || process.env.PORT || 3000);
   serveur.listen(port, () => {
     process.stdout.write(`SFNe ecoute sur http://localhost:${serveur.address().port}\n`);

@@ -6,6 +6,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { convertir } = require('./convertir');
+const { creerVerificateur } = require('./verification/dgi');
 
 const AIDE = `sfne - lit une facture normalisee electronique (FNE) et en fait un Markdown.
 
@@ -17,6 +18,7 @@ Options :
   -j, --json              Ecrit aussi la facture en JSON a cote du Markdown.
       --sans-controles    N'ajoute pas la section des controles au document.
       --sans-provenance   N'ajoute pas la section de provenance.
+      --sans-dgi          Ne verifie pas le sticker aupres de la DGI.
   -h, --aide              Affiche cette aide.
 
 Sans --sortie, le Markdown est ecrit sur la sortie standard.
@@ -25,7 +27,7 @@ Code de sortie : 0 tout est lu et coherent, 2 une facture porte des anomalies,
 1 un fichier au moins n'a pas pu etre lu.`;
 
 function lireArguments(arguments_) {
-  const options = { fichiers: [], sortie: null, json: false, rendu: {}, aide: false };
+  const options = { fichiers: [], sortie: null, json: false, rendu: {}, dgi: true, aide: false };
   for (let rang = 0; rang < arguments_.length; rang += 1) {
     const argument = arguments_[rang];
     if (argument === '-h' || argument === '--aide' || argument === '--help') options.aide = true;
@@ -33,6 +35,7 @@ function lireArguments(arguments_) {
     else if (argument === '-j' || argument === '--json') options.json = true;
     else if (argument === '--sans-controles') options.rendu.controles = false;
     else if (argument === '--sans-provenance') options.rendu.provenance = false;
+    else if (argument === '--sans-dgi') options.dgi = false;
     else if (argument.startsWith('-')) throw new Error(`Option inconnue : ${argument}`);
     else options.fichiers.push(argument);
   }
@@ -53,6 +56,7 @@ async function principal(arguments_) {
     return options.aide ? 0 : 1;
   }
 
+  const verificateur = options.dgi ? creerVerificateur() : null;
   let anomalies = 0;
   let echecs = 0;
   for (const fichier of options.fichiers) {
@@ -60,7 +64,9 @@ async function principal(arguments_) {
     // manquerait un et tout serait a refaire.
     let resultat;
     try {
-      resultat = await convertir(fs.readFileSync(fichier), { nom: path.basename(fichier), rendu: options.rendu });
+      resultat = await convertir(fs.readFileSync(fichier), {
+        nom: path.basename(fichier), rendu: options.rendu, verificateur
+      });
     } catch (erreur) {
       process.stderr.write(`${fichier} : ${erreur.message}\n`);
       echecs += 1;

@@ -35,6 +35,20 @@ async function convertir(donnees, options = {}) {
     codes,
     extraitLe: options.extraitLe || new Date().toISOString()
   });
+  // La verification aupres de la DGI passe avant les controles : c'est l'un
+  // d'eux. Elle ne peut jamais faire echouer une conversion.
+  if (options.verificateur && options.verificateur.configure) {
+    try {
+      const verdict = await options.verificateur.verifier(facture);
+      facture.verification.etat = verdict.etat;
+      facture.verification.verifieLe = verdict.verifieLe;
+      facture.verification.details = verdict.details || null;
+    } catch (erreur) {
+      facture.verification.etat = 'indisponible';
+      facture.verification.details = erreur.message;
+    }
+  }
+
   if (!ressembleAUneFacture(facture)) {
     throw new EntreeInvalide('Ce fichier ne porte ni numero de facture, ni ligne, ni total : ce n\'est pas une facture normalisee.');
   }
