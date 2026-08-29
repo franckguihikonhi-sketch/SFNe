@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SFNe — Factures FNE en Markdown</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="bandeau">
+  <div class="marque">
+    <span class="sigle">SFNe</span>
+    <span class="baseline">Facture normalisée électronique → Markdown</span>
+  </div>
+  <div class="compte" id="compte" hidden>
+    <span id="compte-nom"></span>
+    <span class="jeton" id="compte-quota"></span>
+    <button type="button" class="lien" id="deconnexion">Changer de clé</button>
+  </div>
+</header>
+
+<main>
+  <section class="carte" id="connexion">
+    <h1>Ouvrir une session</h1>
+    <p class="aide">
+      Collez la clé d'API de votre organisation. Elle reste dans ce navigateur et
+      accompagne chaque dépôt de facture.
+    </p>
+    <form id="formulaire-cle" class="rangee">
+      <input type="password" id="champ-cle" placeholder="sfne_…" autocomplete="off" spellcheck="false" required>
+      <button type="submit">Se connecter</button>
+    </form>
+    <p class="erreur" id="erreur-cle" hidden></p>
+    <p class="aide petite">
+      Pas encore de clé ? Sur le serveur : <code>npm run cle -- "Ma société"</code>
+    </p>
+  </section>
+
+  <section class="carte" id="depot" hidden>
+    <h1>Déposer une facture</h1>
+    <div class="zone" id="zone" tabindex="0" role="button" aria-label="Déposer un fichier">
+      <p class="zone-titre">Glissez le PDF de la facture ici</p>
+      <p class="aide">ou cliquez pour choisir un fichier — PDF, Markdown ou texte, 15 Mo au plus</p>
+      <input type="file" id="champ-fichier" accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain" hidden>
+    </div>
+    <p class="erreur" id="erreur-depot" hidden></p>
+    <p class="attente" id="attente" hidden>Lecture de la facture…</p>
+  </section>
+
+  <section class="carte" id="resultat" hidden>
+    <div class="entete-resultat">
+      <h1 id="resultat-titre"></h1>
+      <span class="etat" id="resultat-etat"></span>
+    </div>
+    <dl class="fiche" id="resultat-fiche"></dl>
+    <h2>Contrôles</h2>
+    <ul class="controles" id="resultat-controles"></ul>
+    <h2>Fichier Markdown</h2>
+    <div class="actions">
+      <button type="button" id="copier">Copier</button>
+      <button type="button" id="telecharger">Télécharger le .md</button>
+    </div>
+    <pre class="markdown" id="resultat-markdown"></pre>
+  </section>
+
+  <section class="carte" id="historique" hidden>
+    <h1>Historique</h1>
+    <table class="tableau">
+      <thead>
+        <tr><th>Date</th><th>Numéro</th><th>Client</th><th class="droite">Net à payer</th><th>État</th><th></th></tr>
+      </thead>
+      <tbody id="historique-corps"></tbody>
+    </table>
+    <p class="aide petite" id="historique-vide" hidden>Aucune conversion pour le moment.</p>
+  </section>
+</main>
+
+<footer>
+  <p>
+    API : <code>POST /api/v1/conversions</code> · <code>GET /api/v1/conversions/:id/markdown</code> ·
+    <code>GET /api/v1/moi</code>
+  </p>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>
